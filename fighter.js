@@ -1,0 +1,170 @@
+global.register(function (comvarSet) {
+    var warrior = {
+        justComvarValue    : "00000000000000000000000000000000",
+        ownComvar          : null,
+        enemyIndexes       : null,
+        emptyIndexes       : null,
+        oursIndexes        : null,
+        frontIndexes       : null,
+        frontEnemyNearOurs : null,
+        shoot1             : null,
+        shoot2             : null,
+        shoot3             : null,
+        fillArray          : [0,1,2,5,8,7,6,3],
+        neighborSheet      : {
+            0 : [1,3],
+            1 : [0,2],
+            2 : [1,5],
+            3 : [0,6],
+            5 : [2,8],
+            6 : [3,7],
+            7 : [6,8],
+            8 : [5,7]
+        },
+        getEmptyFillIndex : function () {
+            var isSegmentInProcess = false,
+                segmentIndex = -1,
+                segments    = [],
+                maximumSegmentIndex = null,
+                length      = this.fillArray.length,
+                index,
+                targetIndex;
+
+            for (index = 0; index < length; index += 1) {
+                targetIndex = this.fillArray[index];
+                if (comvarSet[targetIndex] === 0) {
+                    if (!isSegmentInProcess) {
+                        segmentIndex += 1;
+                        segments[segmentIndex] = [];
+                        isSegmentInProcess = true;
+                    }
+                    segments[segmentIndex].push(targetIndex);
+                } else {
+                    isSegmentInProcess = false;
+                }
+            }
+            if (segments.length > 1) {
+                // Склеиваем последний с первым, если нужно.
+                if (segments[0][0] === 0 && segments[segments.length - 1][segments[segments.length - 1].length - 1] === 3) {
+                    segments[0] = segments[segments.length - 1].concat(segments[0]);
+                    segments.splice(segments.length - 1, 1);
+                }
+            }
+
+            length = segments.length;
+            if (length) {
+                for (index = 0; index < length; index += 1) {
+                    if (maximumSegmentIndex === null || segments[index].length > segments[maximumSegmentIndex].length) {
+                        maximumSegmentIndex = index;
+                    }
+                }
+                targetIndex = segments[maximumSegmentIndex][parseInt(segments[maximumSegmentIndex].length / 2, 10)];
+
+                return targetIndex;
+            } else {
+                return 0;
+            }
+        },
+        getNeighborIndexes    : function (index) {
+            return [].concat(this.neighborSheet[String(index)]);
+        },
+        isOurNear : function (index) {
+            var neighbors = this.getNeighborIndexes(index),
+                neighbor1 = comvarSet[neighbors[0]],
+                neighbor2 = comvarSet[neighbors[1]];
+            return (typeof neighbor1 === 'string') ||
+                (typeof neighbor2 === 'string');
+        },
+        getBit : function (tempBool) {
+            return tempBool ? '1' : '0';
+        },
+        culcNewOwnComvar : function () {
+            var result,
+                isEnemyNear,
+                isNotNew = true;
+
+            isEnemyNear = !!this.enemyIndexes.length;
+            result      = this.getBit(isNotNew) + this.getBit(isEnemyNear);
+            this.ownComvar = result + this.justComvarValue.slice(2);
+        },
+        initialize : function () {
+            var enemyIndexes       = [],
+                emptyIndexes       = [],
+                oursIndexes        = [],
+                frontIndexes       = [],
+                frontEnemyNearOurs = [],
+                length             = comvarSet.length,
+                index;
+
+            for (index = 0; index < length; index += 1) {
+                if (index !== 4) {
+                    if (typeof comvarSet[index] === 'number' &&
+                        comvarSet[index] !== 0) {
+                        enemyIndexes.push(index);
+                        if (this.isOurNear(index)) {
+                            frontEnemyNearOurs.push(index);
+                        }
+                    } else if (comvarSet[index] === 0) {
+                        emptyIndexes.push(index);
+                    } else {
+                        if (comvarSet[index].slice(0, 2) === '11' ||
+                            comvarSet[index].slice(0, 2) === '00') {
+                            frontIndexes.push(index);
+                        }
+                        oursIndexes.push(index);
+                    }
+                }
+            }
+
+            this.enemyIndexes       = enemyIndexes;
+            this.emptyIndexes       = emptyIndexes;
+            this.oursIndexes        = oursIndexes;
+            this.frontIndexes       = frontIndexes;
+            this.frontEnemyNearOurs = frontEnemyNearOurs;
+        },
+        getRandomItemFromArray : function (array) {
+            var index = parseInt(Math.random() * array.length, 10);
+            return array[index];
+        },
+        shoot : function (comvarSet) {
+            this.initialize();
+
+            // Если фронт рядом, а врагов нет и пустых мало, помогай фронту.
+            if (this.frontIndexes.length &&
+                !this.enemyIndexes.length &&
+                this.emptyIndexes.length < 3) {
+                this.shoot1 = this.shoot2 = this.getRandomItemFromArray(this.frontIndexes);
+                this.shoot3 = this.getRandomItemFromArray(this.frontIndexes);
+                // Заполняй пустые.
+            } else if ((!this.enemyIndexes.length &&
+                this.emptyIndexes.length)) {
+                this.shoot1 = this.shoot2 = this.shoot3 = this.getEmptyFillIndex();
+                // Если фронт рядом, и врагов много, помогай тем, кто рядом с фронтом.
+            } else if (this.enemyIndexes.length) {
+                if (this.enemyIndexes.length === 1) {
+                    this.shoot1 = this.shoot2 = this.enemyIndexes[0];
+                    if (this.frontIndexes.length) {
+                        this.shoot3 = this.getRandomItemFromArray(this.frontIndexes);
+                    } else if (this.oursIndexes.length) {
+                        this.shoot3 = this.getRandomItemFromArray(this.oursIndexes);
+                    } else {
+                        this.shoot3 = this.enemyIndexes[0];
+                    }
+                } else if (this.enemyIndexes.length === 2) {
+                    this.shoot1 = this.getRandomItemFromArray(this.enemyIndexes);
+                    this.shoot2 = this.getRandomItemFromArray(this.enemyIndexes);
+                    this.shoot3 = this.getRandomItemFromArray(this.enemyIndexes);
+                } else {
+                    if (this.frontEnemyNearOurs.length) {
+                        this.shoot1 = this.shoot2 = this.shoot3 = this.getRandomItemFromArray(this.frontEnemyNearOurs);
+                    } else {
+                        this.shoot1 = this.shoot2 = this.shoot3 = this.getRandomItemFromArray(this.enemyIndexes);
+                    }
+                }
+            }
+            this.culcNewOwnComvar();
+            return [this.shoot1, this.shoot2, this.shoot3, this.ownComvar];
+        }
+    };
+    return warrior.shoot(comvarSet);
+}, "fighter");
